@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         简略哈希值显示 (MD5/SHA1/SHA256/SHA512)
 // @namespace    https://github.com/moriro/HashShortener
-// @version      1.0
+// @version      1.1
 // @description  自定义前后位数，悬停查看、双击复制。
 // @author       moriro
 // @match        *://*/*
