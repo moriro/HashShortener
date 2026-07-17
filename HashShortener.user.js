@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         简略哈希值显示 (MD5/SHA1/SHA256/SHA512)
 // @namespace    https://github.com/moriro/HashShortener
-// @version      1.1
+// @version      1.2
 // @description  自定义前后位数，悬停查看、双击复制。
 // @author       moriro
 // @match        *://*/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
+// @downloadURL https://update.greasyfork.org/scripts/585663/%E7%AE%80%E7%95%A5%E5%93%88%E5%B8%8C%E5%80%BC%E6%98%BE%E7%A4%BA%20%28MD5SHA1SHA256SHA512%29.user.js
+// @updateURL https://update.greasyfork.org/scripts/585663/%E7%AE%80%E7%95%A5%E5%93%88%E5%B8%8C%E5%80%BC%E6%98%BE%E7%A4%BA%20%28MD5SHA1SHA256SHA512%29.meta.js
 // ==/UserScript==
 
 (function() {
@@ -37,108 +39,122 @@
         let node;
 
         while (node = walker.nextNode()) {
-            if (node.parentElement && ['SCRIPT', 'STYLE', 'TEXTAREA', 'TITLE', 'NOSCRIPT', 'INPUT'].includes(node.parentElement.tagName.toUpperCase())) {
-                continue;
+            const parent = node.parentElement;
+
+            if (parent) {
+                // 1. 排除脚本、样式、标题等，以及原生的 INPUT、TEXTAREA 文本框
+                if (['SCRIPT', 'STYLE', 'TEXTAREA', 'TITLE', 'NOSCRIPT', 'INPUT'].includes(parent.tagName.toUpperCase())) {
+                    continue;
+                }
+
+                // 2. 核心新增：排除所有的富文本编辑器和开启了内容可编辑的元素 (如大多数网页评论框、消息输入框)
+                if (parent.isContentEditable) {
+                    continue;
+                }
+
+                // 3. 排除已经被处理过的元素
+                if (parent.classList.contains('shortened-hash')) {
+                    continue;
+                }
             }
-            if (node.parentElement && node.parentElement.classList.contains('shortened-hash')) {
-                continue;
-            }
+
             // 预先测试节点中是否包含符合长度的哈希值
             if (/\b([a-fA-F0-9]{128}|[a-fA-F0-9]{64}|[a-fA-F0-9]{40}|[a-fA-F0-9]{32})\b/.test(node.nodeValue)) {
                 nodesToReplace.push(node);
             }
         }
+    }
 
-        nodesToReplace.forEach(node => {
-            const text = node.nodeValue;
-            let lastIndex = 0;
-            let match;
-            const fragment = document.createDocumentFragment();
-            const regex = new RegExp(hashRegex);
+    nodesToReplace.forEach(node => {
+        const text = node.nodeValue;
+        let lastIndex = 0;
+        let match;
+        const fragment = document.createDocumentFragment();
+        const regex = new RegExp(hashRegex);
 
-            while ((match = regex.exec(text)) !== null) {
-                const fullHash = match[1];
-                const hashLen = fullHash.length; // 动态获取当前匹配到的哈希长度
-                let shortText;
+        while ((match = regex.exec(text)) !== null) {
+            const fullHash = match[1];
+            const hashLen = fullHash.length; // 动态获取当前匹配到的哈希长度
+            let shortText;
 
-                // 根据当前哈希的实际长度进行智能判断
-                if (config.prefixLength + config.suffixLength >= hashLen) {
-                    shortText = fullHash; // 如果用户设置的保留长度加起来 >= 哈希总长，则显示全部
-                } else if (config.prefixLength === 0 && config.suffixLength === 0) {
-                    shortText = '...';
-                } else {
-                    const prefix = fullHash.substring(0, config.prefixLength);
-                    const suffix = fullHash.substring(hashLen - config.suffixLength);
-                    shortText = `${prefix}...${suffix}`;
-                }
+            // 根据当前哈希的实际长度进行智能判断
+            if (config.prefixLength + config.suffixLength >= hashLen) {
+                shortText = fullHash; // 如果用户设置的保留长度加起来 >= 哈希总长，则显示全部
+            } else if (config.prefixLength === 0 && config.suffixLength === 0) {
+                shortText = '...';
+            } else {
+                const prefix = fullHash.substring(0, config.prefixLength);
+                const suffix = fullHash.substring(hashLen - config.suffixLength);
+                shortText = `${prefix}...${suffix}`;
+            }
 
-                if (match.index > lastIndex) {
-                    fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
-                }
+            if (match.index > lastIndex) {
+                fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+            }
 
-                const span = document.createElement('span');
-                span.className = 'shortened-hash';
-                span.textContent = shortText;
-                span.title = fullHash;
-                span.style.cursor = 'help';
-                span.style.borderBottom = '1px dotted #888';
-                span.style.fontFamily = 'monospace';
-                span.setAttribute('data-original-hash', fullHash);
+            const span = document.createElement('span');
+            span.className = 'shortened-hash';
+            span.textContent = shortText;
+            span.title = fullHash;
+            span.style.cursor = 'help';
+            span.style.borderBottom = '1px dotted #888';
+            span.style.fontFamily = 'monospace';
+            span.setAttribute('data-original-hash', fullHash);
 
-                span.addEventListener('dblclick', function(e) {
-                    navigator.clipboard.writeText(this.title).then(() => {
-                        const originalText = this.textContent;
-                        this.textContent = '已复制!';
-                        this.style.color = '#4CAF50';
-                        setTimeout(() => {
-                            this.textContent = originalText;
-                            this.style.color = '';
-                        }, 1000);
-                    });
-                    window.getSelection().removeAllRanges();
-                    e.stopPropagation();
+            span.addEventListener('dblclick', function(e) {
+                navigator.clipboard.writeText(this.title).then(() => {
+                    const originalText = this.textContent;
+                    this.textContent = '已复制!';
+                    this.style.color = '#4CAF50';
+                    setTimeout(() => {
+                        this.textContent = originalText;
+                        this.style.color = '';
+                    }, 1000);
                 });
+                window.getSelection().removeAllRanges();
+                e.stopPropagation();
+            });
 
-                fragment.appendChild(span);
-                lastIndex = regex.lastIndex;
+            fragment.appendChild(span);
+            lastIndex = regex.lastIndex;
+        }
+
+        if (lastIndex < text.length) {
+            fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+        }
+
+        if (fragment.childNodes.length > 0 && node.parentNode) {
+            node.parentNode.replaceChild(fragment, node);
+        }
+    });
+}
+
+ function reRenderHashes() {
+    const elements = document.querySelectorAll('.shortened-hash');
+    elements.forEach(span => {
+        const fullHash = span.getAttribute('data-original-hash');
+        if (fullHash) {
+            const hashLen = fullHash.length;
+            if (config.prefixLength + config.suffixLength >= hashLen) {
+                span.textContent = fullHash;
+            } else if (config.prefixLength === 0 && config.suffixLength === 0) {
+                span.textContent = '...';
+            } else {
+                const prefix = fullHash.substring(0, config.prefixLength);
+                const suffix = fullHash.substring(hashLen - config.suffixLength);
+                span.textContent = `${prefix}...${suffix}`;
             }
+        }
+    });
+}
 
-            if (lastIndex < text.length) {
-                fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
-            }
+// 设置UI
+function createSettingsUI() {
+    if (document.getElementById('hash-shortener-settings')) return;
 
-            if (fragment.childNodes.length > 0 && node.parentNode) {
-                node.parentNode.replaceChild(fragment, node);
-            }
-        });
-    }
-
-    function reRenderHashes() {
-        const elements = document.querySelectorAll('.shortened-hash');
-        elements.forEach(span => {
-            const fullHash = span.getAttribute('data-original-hash');
-            if (fullHash) {
-                const hashLen = fullHash.length;
-                if (config.prefixLength + config.suffixLength >= hashLen) {
-                    span.textContent = fullHash;
-                } else if (config.prefixLength === 0 && config.suffixLength === 0) {
-                    span.textContent = '...';
-                } else {
-                    const prefix = fullHash.substring(0, config.prefixLength);
-                    const suffix = fullHash.substring(hashLen - config.suffixLength);
-                    span.textContent = `${prefix}...${suffix}`;
-                }
-            }
-        });
-    }
-
-    // 设置UI
-    function createSettingsUI() {
-        if (document.getElementById('hash-shortener-settings')) return;
-
-        const panel = document.createElement('div');
-        panel.id = 'hash-shortener-settings';
-        panel.style.cssText = `
+    const panel = document.createElement('div');
+    panel.id = 'hash-shortener-settings';
+    panel.style.cssText = `
             position: fixed !important; top: 20px !important; right: 20px !important; width: 250px !important;
             background: #fff !important; border: 1px solid #ccc !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
             padding: 15px !important; z-index: 2147483647 !important; border-radius: 8px !important;
@@ -187,27 +203,27 @@
         });
     }
 
-    // 初始化与监听
-    const observer = new MutationObserver(mutations => {
-        mutations.forEach(mutation => {
-            mutation.addedNodes.forEach(node => {
-                if (node.nodeType === Node.ELEMENT_NODE && node.id !== 'hash-shortener-settings') {
-                    shortenHashes(node);
-                } else if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
-                    shortenHashes(node.parentElement);
-                }
-            });
+// 初始化与监听
+const observer = new MutationObserver(mutations => {
+    mutations.forEach(mutation => {
+        mutation.addedNodes.forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE && node.id !== 'hash-shortener-settings') {
+                shortenHashes(node);
+            } else if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
+                shortenHashes(node.parentElement);
+            }
         });
     });
+});
 
-    function init() {
-        if (document.body) {
-            shortenHashes(document.body);
-            observer.observe(document.body, { childList: true, subtree: true });
-        } else {
-            setTimeout(init, 100);
-        }
+function init() {
+    if (document.body) {
+        shortenHashes(document.body);
+        observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+        setTimeout(init, 100);
     }
+}
 
-    init();
+init();
 })();
